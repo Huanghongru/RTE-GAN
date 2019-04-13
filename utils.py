@@ -45,9 +45,8 @@ class phPair:
     """
     def __init__(self, p, h, l, max_len=MAX_LENGTH, padding=False):
         self.l_dict = {'entailment':0, 'contradiction': 1, 'neutral': 2}
-        self.label = [0, 0, 0]
         self.max_len = max_len
-        self.label[self.l_dict[l]] = 1
+        self.label = self.l_dict[l]
 
         p_ = p.split()
         h_ = h.split()

@@ -116,7 +116,6 @@ class Discriminator(nn.Module):
         # aggregate and output the labels
         v1 = torch.sum(v1, dim=0).view(1,-1)
         v2 = torch.sum(v2, dim=0).view(1,-1)
-        print v1.shape, v2.shape
         y = self.aggrg1(torch.cat((v1, v2), dim=1))
         y = self.aggrg_dropout1(y)
         y = F.relu(y)
@@ -127,3 +126,6 @@ class Discriminator(nn.Module):
         y = F.softmax(y, dim=1)
 
         return E, beta, alpha, v1, v2, y
+
+    def initHidden(self):
+        return torch.randn(1, 1, self.hidden_size, device=device)
