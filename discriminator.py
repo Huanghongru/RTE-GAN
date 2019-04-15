@@ -80,23 +80,38 @@ class Discriminator(nn.Module):
         fh = self.attend2(fh)
         fh = self.attend_dropout2(fh)
         fh = F.relu(fh)
+        # print 'fp ', fp
+        # print 'fh ', fh
 
         # decompose matrix E
         E = torch.mm(fp, fh.view(self.hidden_size, -1))
+        # print 'E ', E
 
         # normalized attention weight
-        beta = torch.zeros(len(p_emb), self.word_dim, device=device) 
-        alpha = torch.zeros(len(h_emb), self.word_dim, device=device)
+        # beta = torch.zeros(len(p_emb), self.word_dim, device=device) 
+        # alpha = torch.zeros(len(h_emb), self.word_dim, device=device)
 
-        eik = torch.sum(E, dim=1)
-        ekj = torch.sum(E, dim=0)
-        for i in range(len(p_emb)):
-            for j in range(len(h_emb)):
-                beta[i] += (torch.exp(E[i][j]) / eik[i]) * h_emb[j]
+        # eik = torch.sum(E, dim=1)
+        # ekj = torch.sum(E, dim=0)
+        # for i in range(len(p_emb)):
+        #     for j in range(len(h_emb)):
+        #         beta[i] += (torch.exp(E[i][j]) / eik[i]) * h_emb[j]
 
-        for j in range(len(h_emb)):
-            for i in range(len(p_emb)):
-                alpha[j] += (torch.exp(E[i][j]) / ekj[j]) * p_emb[i]
+        # for j in range(len(h_emb)):
+        #     for i in range(len(p_emb)):
+        #         alpha[j] += (torch.exp(E[i][j]) / ekj[j]) * p_emb[i]
+
+        # Do it vectorially
+        eik = torch.sum(E, dim=1).view(-1,1)
+        ekj = torch.sum(E, dim=0).view(1,-1)
+        # print E.shape, eik.shape, ekj.shape, (E/eik).shape, (E/ekj).shape
+        beta = torch.mm(E/eik, h_emb)
+        alpha = torch.mm(torch.t(E/ekj), p_emb)
+        
+        # print 'alpha ', alpha
+        # print 'beta ', beta
+        # print 'alpha shape: ', alpha.shape
+        # print 'beta shape: ', beta.shape
 
         # calculate comparison vectors
         v1 = self.comp1(torch.cat((p_emb, beta), dim=1))
@@ -114,16 +129,18 @@ class Discriminator(nn.Module):
         v2 = F.relu(v2)
 
         # aggregate and output the labels
-        v1 = torch.sum(v1, dim=0).view(1,-1)
-        v2 = torch.sum(v2, dim=0).view(1,-1)
-        y = self.aggrg1(torch.cat((v1, v2), dim=1))
+        v1 = torch.sum(v1, dim=0)
+        v2 = torch.sum(v2, dim=0)
+        # print v1, v2
+        y = self.aggrg1(torch.cat((v1,v2)))
+        # print 'y ', y
         y = self.aggrg_dropout1(y)
         y = F.relu(y)
         y = self.aggrg2(y)
         y = self.aggrg_dropout2(y)
         y = F.relu(y)
         y = self.aggrg3(y)
-        y = F.softmax(y, dim=1)
+        y = F.softmax(y, dim=0)
 
         return E, beta, alpha, v1, v2, y
 

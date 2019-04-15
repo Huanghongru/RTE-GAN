@@ -17,15 +17,15 @@ def pretrainDiscriminator(train_p, train_h, train_l,
     disc_optimizer.zero_grad()
 
     _, _, _, _, _, y_ = disc(train_p, train_h)
-    loss = criterion(y_, train_l)
+    # print 'y_: ', y_, 'label: ', train_l
+    loss = criterion(y_.view(1,-1), train_l)
 
     loss.backward()
-    disc_optimizer.step()
     return loss
 
 def pretrainItersDisc(disc, phpairs, epochs=1, mini_batch=32, learning_rate=0.01):
     loss = 0.
-    print_every = mini_batch*10
+    print_every = mini_batch
 
     disc_optim = optim.SGD(disc.parameters(), lr=learning_rate)
     
@@ -37,10 +37,20 @@ def pretrainItersDisc(disc, phpairs, epochs=1, mini_batch=32, learning_rate=0.01
             for datum in batch_data:
                 loss += pretrainDiscriminator(datum.premise, datum.hypothesis, 
                                         datum.label, disc, disc_optim, criterion)
-
+            disc_optim.step()
+            # print list(disc.parameters())[1].grad
             if i % print_every == 0:
-                print "train data %d/%d, loss:%d\n" % (i, len(phpairs), loss/print_every)
+                print "train data %d/%d, loss:%.4f\n" % (i, len(phpairs), loss/print_every)
                 loss = 0.
+                # checkGrad(disc)
     
 
-
+def checkGrad(model):
+    """
+    Check whether the model parameters have gradient properly
+    """
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print '%s has proper grad' % name
+        else:
+            print '%s doesn\'t have grad' % name
