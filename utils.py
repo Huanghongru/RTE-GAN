@@ -109,7 +109,7 @@ def load_pretrained_embedding(lang, w2v_file):
             w2v.append(unk)
     return torch.tensor(w2v)
 
-def readData(file_name, word2vec=w2v):
+def readData(file_name, word2vec=w2v, load_w2v=True):
     """
     Read the data. Filter out those neutral data.
     For datum that has multiple labels, select the most one as its label.
@@ -120,12 +120,14 @@ def readData(file_name, word2vec=w2v):
     print "Reading data file %s..." % file_name
 
     ph_pairs = []
+    label_cnt = {'entailment': 0, 'contradiction': 0, 'neutral': 0}
     corpus_dict = Lang('en')
     with open(file_name, 'rb') as f:
         for item in jsonl.reader(f):
             p = normalizeString(item['sentence1'])
             h = normalizeString(item['sentence2'])
             l = getLabel(item['annotator_labels'])
+            label_cnt[l] += 1
             datum = phPair(p, h, l)
             if datum.label != 'neutral':
                 ph_pairs.append(datum)
@@ -135,11 +137,12 @@ def readData(file_name, word2vec=w2v):
     print "Loading dataset completed !"
     print "Loading word2vec model..."
 
-    # glove = np.zeros((5,5))
-    glove = load_pretrained_embedding(corpus_dict, word2vec)
-    print "Loading word2vec done!"
+    glove = np.zeros((5,5))
+    if loadW2V:
+        glove = load_pretrained_embedding(corpus_dict, word2vec)
+        print "Loading word2vec done!"
 
     print "Courpus used %d words" % corpus_dict.n_words
-    print "w2v matrix size: ", glove.shape
+    print "Data distributions: %s" % label_cnt
     return ph_pairs, corpus_dict, glove
 
