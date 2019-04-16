@@ -138,7 +138,7 @@ def readData(file_name, word2vec=w2v, load_w2v=True):
     print "Loading word2vec model..."
 
     glove = np.zeros((5,5))
-    if loadW2V:
+    if load_w2v:
         glove = load_pretrained_embedding(corpus_dict, word2vec)
         print "Loading word2vec done!"
 
