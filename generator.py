@@ -26,9 +26,8 @@ LABEL = Field(tokenize = tokenize,
         lower=True)
 
 train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
-
-TEXT.build_vocab(train_data, min_freq=2)
-LABEL.build_vocab(train_data, min_freq=2)
+TEXT.build_vocab(test_data, min_freq=2)
+LABEL.build_vocab(test_data, min_freq=2)
 
 BATCH_SIZE = 128
 
@@ -156,14 +155,24 @@ PAD_IDX = TEXT.vocab.stoi[u'<pad>']
 
 criterion = nn.CrossEntropyLoss(ignore_index = PAD_IDX)
 
+def init_process(src, label):
+    for i in range(BATCH_SIZE):
+        if LABEL.vocab.itos[label[0,i]]==u'entailment':
+            src[0,i] = TEXT.vocab.stoi[u'<esos>']
+        elif LABEL.vocab.itos[label[0,i]] == u'neutral':
+            src[0,i] = TEXT.vocab.stoi[u'<nsos>']
+        elif LABEL.vocab.itos[label[0,i]] == u'contradiction':
+            src[0,i] = TEXT.vocab.stoi[u'<csos>']
+    return src
+
 def train(model, iterator, optimizer, criterion, clip):
     model.train() # ???
 
     epoch_loss = 0
 
     for i, batch in enumerate(iterator):
-        src = batch.premise
-        trg = batch.hypothesis
+        src = init_process(batch.premise, batch.label)
+        trg = init_process(batch.hypothesis, batch.label)
 
         optimizer.zero_grad()
 
@@ -269,5 +278,4 @@ def visualSent(word_idxs):
     return " ".join(sent)
 
 # trainIter()
-print "Test loss: %.4f" % test()
-
+# print "Test loss: %.4f" % test()
