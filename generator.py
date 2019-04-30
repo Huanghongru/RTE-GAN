@@ -264,6 +264,9 @@ def test(beam_size=5):
             print "Ori hyp: %s" % visualSent(trg[:, rand_col])
             print "Label: %s\n" % LABEL.vocab.itos[batch.label[0,rand_col].item()]
 
+            print "Beam Test:"
+            beam_test(rand_output)
+
             output = output[1:].view(-1, output.shape[-1])
             trg = trg[1:].view(-1)
 
@@ -273,6 +276,17 @@ def test(beam_size=5):
 
     return epoch_loss / len(test_iterator)
 
+def beam_test(output, beam_size=5):
+    idxs = output.topk(k=beam_size, dim=1)[1]
+    for idx_cand in idxs:
+        top1 = idx_cand[0].item()
+        if TEXT.vocab.itos[top1] == u'<eos>':
+            break
+        print "%s | " % vocab.itos[top1],
+        for idx in idx_cand[1:]:
+            print "%s " % TEXT.vocab.itos[idx.item()], 
+
+# TODO: modify the source code to add special init tokens and retrain
 def signal_trigger_test(premise, label):
     model.eval()
     print "Pre: %s" % premise
@@ -284,8 +298,8 @@ def signal_trigger_test(premise, label):
     print "%s: %s" % (label, visualSent(outputs.argmax(dim=1)))
 
 def visualSent(word_idxs):
-    sent = [TEXT.vocab.itos[idx] for idx in word_idxs if idx not in [1,2,3]]
+    sent = [TEXT.vocab.itos[idx] for idx in word_idxs if idx not in [1,2,3,4,5,6]]
     return " ".join(sent)
 
-trainIter()
+# trainIter()
 # print "Test loss: %.4f" % test()
