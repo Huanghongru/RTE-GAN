@@ -31,10 +31,10 @@ train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
 TEXT.build_vocab(train_data, min_freq=2)
 LABEL.build_vocab(train_data, min_freq=2)
 
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 
-# device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 
 train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
         (train_data, valid_data, test_data),
@@ -284,7 +284,7 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator)
 
-N_EPOCHS = 10
+N_EPOCHS = 16
 CLIP = 1
 
 def trainIter():
@@ -326,7 +326,10 @@ def test():
             rand_output = output[1:, rand_col, :].squeeze()
             print "Gen hyp: %s" % visualSent(rand_output.argmax(dim=1))
             print "Ori hyp: %s" % visualSent(trg[:, rand_col])
-            print "Label: %s\n" % LABEL.vocab.itos[batch.label[0,rand_col].item()]
+            print "Label: %s" % LABEL.vocab.itos[batch.label[0,rand_col].item()]
+
+            beam_test(rand_output)
+            print "\n"
 
             output = output[1:].view(-1, output.shape[-1])
             trg = trg[1:].view(-1)
@@ -337,10 +340,21 @@ def test():
 
     return epoch_loss / len(test_iterator)
 
+def beam_test(output, beam_size=5):
+    idxs = output.topk(k=beam_size, dim=1)[1]
+    for idx_cand in idxs:
+        top1 = idx_cand[0].item()
+        if TEXT.vocab.itos[top1] == u'<eos>':
+            break
+        print "%13s\t| " % TEXT.vocab.itos[top1],
+        for idx in idx_cand[1:]:
+            print "%10s" % TEXT.vocab.itos[idx.item()], 
+        print
+
 def visualSent(word_idxs):
     sent = [TEXT.vocab.itos[idx] for idx in word_idxs if idx not in [1,2,3]]
     return " ".join(sent)
 
-trainIter()
-# print "Test loss: %.4f" % test()
+# trainIter()
+print "Test loss: %.4f" % test()
 
