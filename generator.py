@@ -26,12 +26,12 @@ LABEL = Field(tokenize = tokenize,
         lower=True)
 
 train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
-TEXT.build_vocab(test_data, min_freq=2)
-LABEL.build_vocab(test_data, min_freq=2)
+TEXT.build_vocab(train_data, min_freq=2)
+LABEL.build_vocab(train_data, min_freq=2)
 
 BATCH_SIZE = 128
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
         (train_data, valid_data, test_data),
@@ -156,7 +156,7 @@ PAD_IDX = TEXT.vocab.stoi[u'<pad>']
 criterion = nn.CrossEntropyLoss(ignore_index = PAD_IDX)
 
 def init_process(src, label):
-    for i in range(BATCH_SIZE):
+    for i in range(src.shape[1]):
         if LABEL.vocab.itos[label[0,i]]==u'entailment':
             src[0,i] = TEXT.vocab.stoi[u'<esos>']
         elif LABEL.vocab.itos[label[0,i]] == u'neutral':
@@ -207,8 +207,8 @@ def evaluate(model, iterator, criterion):
     epoch_loss = 0
     with torch.no_grad():
         for i, batch in enumerate(iterator):
-            src = batch.premise
-            trg = batch.hypothesis
+            src = init_process(batch.premise, batch.label)
+            trg = init_process(batch.hypothesis, batch.label)
 
             output = model(src, trg, 0)
 
@@ -220,7 +220,7 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator)
 
-N_EPOCHS = 10
+N_EPOCHS = 16
 CLIP = 1
 
 def trainIter():
@@ -250,8 +250,8 @@ def test():
     epoch_loss = 0
     with torch.no_grad():
         for i, batch in enumerate(test_iterator):
-            src = batch.premise
-            trg = batch.hypothesis
+            src = init_process(batch.premise, batch.label)
+            trg = init_process(batch.hypothesis, batch.label)
 
             rand_col = random.choice(range(src.shape[1]))
             rand_input = src[:,rand_col]
@@ -274,8 +274,8 @@ def test():
     return epoch_loss / len(test_iterator)
 
 def visualSent(word_idxs):
-    sent = [TEXT.vocab.itos[idx] for idx in word_idxs if idx not in [1,2,3]]
+    sent = [TEXT.vocab.itos[idx] for idx in word_idxs if idx not in [1,2,3,4,5,6]]
     return " ".join(sent)
 
-# trainIter()
+trainIter()
 # print "Test loss: %.4f" % test()
