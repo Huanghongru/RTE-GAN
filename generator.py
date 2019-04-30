@@ -220,7 +220,7 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator)
 
-N_EPOCHS = 16
+N_EPOCHS = 32
 CLIP = 1
 
 def trainIter():
@@ -241,7 +241,7 @@ def trainIter():
         print '\tTrain Loss: %.3f' % train_loss
         print '\t Val. Loss: %.3f' % valid_loss
 
-def test():
+def test(beam_size=5):
     model.load_state_dict(torch.load('model/snli-model.pt'))
     model.eval()
 
@@ -264,6 +264,9 @@ def test():
             print "Ori hyp: %s" % visualSent(trg[:, rand_col])
             print "Label: %s\n" % LABEL.vocab.itos[batch.label[0,rand_col].item()]
 
+            print "Beam size: %d" % beam_size
+            # TODO: test beam
+
             output = output[1:].view(-1, output.shape[-1])
             trg = trg[1:].view(-1)
 
@@ -272,6 +275,15 @@ def test():
             epoch_loss += loss.item()
 
     return epoch_loss / len(test_iterator)
+
+def signal_trigger_test(premise, label):
+    print "Pre: %s" % premise
+    prem = TEXT.numericalize([TEXT.preprocess(premise)], device=device)
+    dummy_trg = torch.zeros(36, 1, device=device, dtype=torch.long)
+    dummy_trg[0,0] = LABEL.vocab.stoi[label]
+
+    outputs = model(prem, dummy_trg, 0).squeeze()
+    print "%s: %s" % (label, visualSent(outputs.argmax(dim=1)))
 
 def visualSent(word_idxs):
     sent = [TEXT.vocab.itos[idx] for idx in word_idxs if idx not in [1,2,3,4,5,6]]
