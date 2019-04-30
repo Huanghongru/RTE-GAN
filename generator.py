@@ -29,9 +29,9 @@ train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
 TEXT.build_vocab(train_data, min_freq=2)
 LABEL.build_vocab(train_data, min_freq=2)
 
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
         (train_data, valid_data, test_data),
@@ -207,8 +207,8 @@ def evaluate(model, iterator, criterion):
     epoch_loss = 0
     with torch.no_grad():
         for i, batch in enumerate(iterator):
-            src = batch.premise
-            trg = batch.hypothesis
+            src = init_process(batch.premise, batch.label)
+            trg = init_process(batch.hypothesis, batch.label)
 
             output = model(src, trg, 0)
 
@@ -250,8 +250,8 @@ def test(beam_size=5):
     epoch_loss = 0
     with torch.no_grad():
         for i, batch in enumerate(test_iterator):
-            src = batch.premise
-            trg = batch.hypothesis
+            src = init_process(batch.premise, batch.label)
+            trg = init_process(batch.hypothesis, batch.label)
 
             rand_col = random.choice(range(src.shape[1]))
             rand_input = src[:,rand_col]
@@ -264,9 +264,6 @@ def test(beam_size=5):
             print "Ori hyp: %s" % visualSent(trg[:, rand_col])
             print "Label: %s\n" % LABEL.vocab.itos[batch.label[0,rand_col].item()]
 
-            print "Beam size: %d" % beam_size
-            # TODO: test beam
-
             output = output[1:].view(-1, output.shape[-1])
             trg = trg[1:].view(-1)
 
@@ -277,6 +274,7 @@ def test(beam_size=5):
     return epoch_loss / len(test_iterator)
 
 def signal_trigger_test(premise, label):
+    model.eval()
     print "Pre: %s" % premise
     prem = TEXT.numericalize([TEXT.preprocess(premise)], device=device)
     dummy_trg = torch.zeros(36, 1, device=device, dtype=torch.long)
@@ -289,5 +287,5 @@ def visualSent(word_idxs):
     sent = [TEXT.vocab.itos[idx] for idx in word_idxs if idx not in [1,2,3]]
     return " ".join(sent)
 
-# trainIter()
+trainIter()
 # print "Test loss: %.4f" % test()
