@@ -6,12 +6,16 @@ import torch.nn.functional as F
 from torchtext.datasets import SNLI
 from torchtext.data import Field, BucketIterator
 
+import matplotlib
+matplotlib.use('Agg')   # deal with server display issue
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 import nltk
 
 import random
+
 
 SEED = 1234
 random.seed(SEED)
@@ -37,7 +41,7 @@ LABEL.build_vocab(train_data, min_freq=2)
 
 BATCH_SIZE = 64
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
 
 train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
@@ -70,7 +74,7 @@ class Encoder(nn.Module):
 
         embedded = self.dropout(self.embedding(src))
 
-        packed_embedded = nn.utils.rnn.pack_padded_sequence(mebedded, src_len)
+        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, src_len)
 
         packed_outputs, hidden = self.rnn(packed_embedded)
 
@@ -240,8 +244,8 @@ INPUT_DIM = len(TEXT.vocab)
 OUTPUT_DIM = len(TEXT.vocab)
 ENC_EMB_DIM = 256
 DEC_EMB_DIM = 256
-ENC_HID_DIM = 512
-DEC_HID_DIM = 512
+ENC_HID_DIM = 1024
+DEC_HID_DIM = 1024
 N_LAYERS = 2
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
@@ -356,14 +360,14 @@ def test():
     epoch_loss = 0
     with torch.no_grad():
         for i, batch in enumerate(test_iterator):
-            src = batch.premise
-            trg = batch.hypothesis
+            src, src_len = batch.premise
+            trg, trg_len = batch.hypothesis
 
             rand_col = random.choice(range(src.shape[1]))
             rand_input = src[:,rand_col]
             print "Premise: %s" % visualSent(rand_input)
 
-            output = model(src, trg, 0)
+            output, attns = model(src, src_len, trg, 0)
 
             rand_output = output[1:, rand_col, :].squeeze()
             print "Gen hyp: %s" % visualSent(rand_output.argmax(dim=1))
@@ -398,7 +402,9 @@ def visualSent(word_idxs):
     return " ".join(sent)
 
 def generate_sentence(model, sentence):
+    model.load_state_dict(torch.load('model/masnli-model.pt'))
     model.eval()
+
     tokenized = tokenize(sentence)
     tokenized = [u'<sos>'] + [t.lower() for t in tokenized] + [u'<eos>']
     numericalized = [TEXT.vocab.stoi[t] for t in tokenized]
@@ -423,7 +429,7 @@ def display_attention(candidate, translation, attention):
     attention = attention.squeeze(1).cpu().detach().numpy()
     cax = ax.matshow(attention, cmap='bone')
     ax.tick_params(labelsize=15)
-    ax.set_xticklabels([''] + ['<sos>'] + [t.lower() for t in tokenize_de(candidate)] + ['<eos>'], 
+    ax.set_xticklabels([''] + ['<sos>'] + [t.lower() for t in tokenize(candidate)] + ['<eos>'], 
                         rotation=45)
     ax.set_yticklabels([''] + translation)
     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
@@ -433,6 +439,16 @@ def display_attention(candidate, translation, attention):
     fig.savefig('attn.png')
     plt.close()
 
+def attn_test(data, example_idx):
+    premise = ' '.join(vars(data.examples[example_idx])['premise'])
+    hypothesis = ' '.join(vars(data.examples[example_idx])['hypothesis'])
+
+    gen_hyp, attn = generate_sentence(model, premise)
+
+    display_attention(premise, gen_hyp, attn)
+
 # trainIter()
 # print "Test loss: %.4f" % test()
+
+attn_test(train_data, 56)
 
