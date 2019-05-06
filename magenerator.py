@@ -244,9 +244,9 @@ INPUT_DIM = len(TEXT.vocab)
 OUTPUT_DIM = len(TEXT.vocab)
 ENC_EMB_DIM = 256
 DEC_EMB_DIM = 256
-ENC_HID_DIM = 1024
-DEC_HID_DIM = 1024
-N_LAYERS = 2
+ENC_HID_DIM = 512
+DEC_HID_DIM = 512
+N_LAYERS = 8
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
 PAD_IDX = TEXT.vocab.stoi[u'<pad>']
@@ -261,8 +261,11 @@ model = Seq2Seq(enc, dec, device, PAD_IDX, SOS_IDX, EOS_IDX).to(device)
 
 def init_weights(m):
     for name, param in m.named_parameters():
-        if 'weight' in name:
-            nn.init.normal_(param.data, mean=0, std=0.01)
+        if 'weight_ih' in name:
+            # nn.init.normal_(param.data, mean=0, std=0.01)
+            nn.init.xavier_uniform_(param.data)
+        elif 'weight_hh' in name:
+            nn.init.orthogonal_(param.data)
         else:
             nn.init.constant_(param.data, 0)
                             
@@ -307,8 +310,8 @@ def train(model, iterator, optimizer, criterion, clip):
 
         epoch_loss += loss.item()
 
-        if (i+1) % 100 == 0:
-            print "batch %d / %d - loss: %.8f" % (i+1, len(iterator), loss.item())
+        # if (i+1) % 100 == 0:
+        #     print "batch %d / %d - loss: %.8f" % (i+1, len(iterator), loss.item())
 
     return epoch_loss / len(iterator)
 
@@ -447,8 +450,8 @@ def attn_test(data, example_idx):
 
     display_attention(premise, gen_hyp, attn)
 
-# trainIter()
+trainIter()
 # print "Test loss: %.4f" % test()
 
-attn_test(train_data, 56)
+# attn_test(train_data, 56)
 
