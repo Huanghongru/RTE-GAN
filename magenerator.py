@@ -244,8 +244,8 @@ INPUT_DIM = len(TEXT.vocab)
 OUTPUT_DIM = len(TEXT.vocab)
 ENC_EMB_DIM = 256
 DEC_EMB_DIM = 256
-ENC_HID_DIM = 1024
-DEC_HID_DIM = 1024
+ENC_HID_DIM = 512
+DEC_HID_DIM = 512
 N_LAYERS = 2
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
@@ -330,7 +330,7 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator)
 
-N_EPOCHS = 10
+N_EPOCHS = 2
 CLIP = 1
 
 def trainIter():
@@ -423,7 +423,7 @@ def generate_sentence(model, sentence):
     return output, attentions
 
 
-def display_attention(candidate, translation, attention):
+def display_attention(candidate, translation, attention, fig_name):
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
     attention = attention.squeeze(1).cpu().detach().numpy()
@@ -436,19 +436,19 @@ def display_attention(candidate, translation, attention):
     ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
 
     # plt.show()
-    fig.savefig('attn.png')
+    fig.savefig(fig_name)
     plt.close()
 
-def attn_test(data, example_idx):
+def attn_test(data, example_idx, fig_name):
     premise = ' '.join(vars(data.examples[example_idx])['premise'])
     hypothesis = ' '.join(vars(data.examples[example_idx])['hypothesis'])
 
     gen_hyp, attn = generate_sentence(model, premise)
 
-    display_attention(premise, gen_hyp, attn)
+    display_attention(premise, gen_hyp, attn, fig_name)
 
 # trainIter()
 # print "Test loss: %.4f" % test()
 
-attn_test(train_data, 56)
+# attn_test(train_data, 56, 'attn1.png')
 
