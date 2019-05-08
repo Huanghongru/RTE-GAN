@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import operator
 
+from Queue import PriorityQueue
 from torchtext.datasets import SNLI
 from torchtext.data import Field, BucketIterator
 
@@ -39,7 +41,7 @@ train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
 TEXT.build_vocab(train_data, min_freq=2)
 LABEL.build_vocab(train_data, min_freq=2)
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
@@ -51,6 +53,19 @@ train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
         sort_key = lambda x : len(x.premise),
         device=device)
 print "Preparing data completed !"
+
+class BeamSearchNode(object):
+    def __init__(self, hidden_state, pre_node, word_idx, log_prob, length):
+        self.hidden = hidden_state
+        self.pre_node = pre_node
+        self.word_idx = word_idx
+        self.logp = log_prob
+        self.len = length
+
+    def eval(self, alpha=1.0):
+        # log probability helps numerical stability
+        reward = 0
+        return self.logp / float(self.len - 1 + 1e-6) + alpha * reward
 
 class Encoder(nn.Module):
     def __init__(self, input_dim, emb_dim, enc_hid_dim, dec_hid_dim, dropout):
@@ -240,6 +255,80 @@ class Seq2Seq(nn.Module):
 
         return outputs, attentions
 
+    def beam_search_decode(self, src, src_len, beam_width=3):
+        trg = torch.zeros((100, src.shape[1])).long().fill_(self.sos_idx).to(self.device)
+        
+        batch_size = src.shape[1]
+        max_len = trg.shape[0]
+        topk = 1
+        trg_vocab_size = self.decoder.output_dim
+
+        encoder_outputs, hidden = self.encoder(src, src_len)
+
+        output = trg[0,:]
+        mask = self.create_mask(src)
+
+        # beam search part
+        endnodes = []
+        number_required = min((topk+1), topk-len(endnodes))
+
+        # starting node - hidden vector, previous node, word id, logp, len
+        node = BeamSearchNode(hidden, None, output, 0, 1)
+        nodes = PriorityQueue()
+
+        nodes.put((-node.eval(), node))
+        qsize = 1
+
+        while True:
+            # give up when decoding takes too long
+            if qsize > 2000: break
+
+            # fetch the best node
+            score, cur = nodes.get()
+            decoder_input = cur.word_idx
+            decoder_hidden = cur.hidden
+
+            if cur.word_idx.item() == EOS_IDX and cur.pre_node != None:
+                endnodes.append((score, cur))
+                if len(endnodes) >= number_required: break
+                else: continue
+
+            decoder_output, decoder_hidden, attention = self.decoder(decoder_input, decoder_hidden, encoder_outputs, mask)
+
+            log_prob, indexes = torch.topk(F.log_softmax(decoder_output, dim=1), beam_width)
+
+            for new_k in range(beam_width):
+                decoded_t = indexes[0][new_k].view(1,-1)
+                log_p = log_prob[0][new_k].item()
+
+                node = BeamSearchNode(decoder_hidden, cur, decoded_t, cur.logp+log_p, cur.len+1)
+
+                score = -node.eval()
+
+                # put new nodes into the queue
+                nodes.put((score, node))
+            qsize += beam_width-1
+
+        if len(endnodes) == 0:
+            endnodes = [nodes.get() for _ in range(topk)]
+
+        utterances = []
+        for score, n in sorted(endnodes, key=operator.itemgetter(0)):
+            utterance = []
+            utterance.append(n.word_idx)
+
+            # back tracking
+            while n.pre_node != None:
+                n = n.pre_node
+                utterance.append(n.word_idx)
+
+            utterance = utterance[::-1]
+            utterances.append(utterance)
+
+        decoded_batch.append(utterances)
+
+        return decoded_batch
+
 INPUT_DIM = len(TEXT.vocab)
 OUTPUT_DIM = len(TEXT.vocab)
 ENC_EMB_DIM = 256
@@ -262,8 +351,8 @@ model = Seq2Seq(enc, dec, device, PAD_IDX, SOS_IDX, EOS_IDX).to(device)
 def init_weights(m):
     for name, param in m.named_parameters():
         if 'weight_ih' in name:
-            # nn.init.normal_(param.data, mean=0, std=0.01)
-            nn.init.xavier_uniform_(param.data)
+            nn.init.normal_(param.data, mean=0, std=0.01)
+            # nn.init.xavier_uniform_(param.data)
         elif 'weight_hh' in name:
             nn.init.orthogonal_(param.data)
         else:
@@ -333,7 +422,7 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator)
 
-N_EPOCHS = 2
+N_EPOCHS = 16
 CLIP = 1
 
 def trainIter():
@@ -450,7 +539,27 @@ def attn_test(data, example_idx, fig_name):
 
     display_attention(premise, gen_hyp, attn, fig_name)
 
-trainIter()
+def generate_bs_sentence(model, dataset, example_idx):
+    model.load_state_dict(torch.load('model/masnli-model.pt'))
+    model.eval()
+
+    sentence = ' '.join(vars(dataset.examples[example_idx])['premise'])
+
+    tokenized = tokenize(sentence)
+    tokenized = [u'<sos>'] + [t.lower() for t in tokenized] + [u'<eos>']
+    numericalized = [TEXT.vocab.stoi[t] for t in tokenized]
+
+    sentence_len = torch.LongTensor([len(numericalized)]).to(device)
+    input_tensor = torch.LongTensor(numericalized).unsqueeze(1).to(device)
+
+    decoded_batch = model.beam_search_decode(input_tensor, sentence_len)
+
+    print decoded_batch
+    return decoded_batch
+
+generate_bs_sentence(model, train_data, 23)
+
+# trainIter()
 # print "Test loss: %.4f" % test()
 
 # attn_test(train_data, 56, 'attn1.png')
