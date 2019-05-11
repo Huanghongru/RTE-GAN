@@ -31,7 +31,7 @@ LABEL.build_vocab(train_data, min_freq=2)
 
 BATCH_SIZE = 64
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
         (train_data, valid_data, test_data),
@@ -288,7 +288,9 @@ def beam_test(output, beam_size=5):
 
 # TODO: modify the source code to add special init tokens and retrain
 def signal_trigger_test(premise, label):
+    model.load_state_dict(torch.load('model/snli-model.pt'))
     model.eval()
+
     print "Pre: %s" % premise
     prem = TEXT.numericalize([TEXT.preprocess(premise)], device=device)
     dummy_trg = torch.zeros(36, 1, device=device, dtype=torch.long)
