@@ -43,8 +43,8 @@ LABEL.build_vocab(train_data, min_freq=2)
 
 BATCH_SIZE = 32
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu")
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
         (train_data, valid_data, test_data),
@@ -285,6 +285,7 @@ class Seq2Seq(nn.Module):
 
             # fetch the best node
             score, cur = nodes.get()
+            print TEXT.vocab.itos[cur.word_idx], score
             decoder_input = cur.word_idx
             decoder_hidden = cur.hidden
 
@@ -296,6 +297,7 @@ class Seq2Seq(nn.Module):
             decoder_output, decoder_hidden, attention = self.decoder(decoder_input, decoder_hidden, encoder_outputs, mask)
 
             log_prob, indexes = torch.topk(F.log_softmax(decoder_output, dim=1), beam_width)
+            print 'log_prob: %s indexes: %s' % (log_prob, indexes)
 
             for new_k in range(beam_width):
                 decoded_t = indexes[0][new_k].view(1,-1)
@@ -313,6 +315,7 @@ class Seq2Seq(nn.Module):
             endnodes = [nodes.get() for _ in range(topk)]
 
         utterances = []
+        decoded_batch = []
         for score, n in sorted(endnodes, key=operator.itemgetter(0)):
             utterance = []
             utterance.append(n.word_idx)
@@ -544,6 +547,7 @@ def generate_bs_sentence(model, dataset, example_idx):
     model.eval()
 
     sentence = ' '.join(vars(dataset.examples[example_idx])['premise'])
+    print sentence
 
     tokenized = tokenize(sentence)
     tokenized = [u'<sos>'] + [t.lower() for t in tokenized] + [u'<eos>']
@@ -557,7 +561,9 @@ def generate_bs_sentence(model, dataset, example_idx):
     print decoded_batch
     return decoded_batch
 
-generate_bs_sentence(model, train_data, 23)
+# generate_bs_sentence(model, train_data, 32)
+# o, a = generate_sentence(model, "a little league team tries to catch a runner sliding into a base in an afternoon game .")
+# print o
 
 # trainIter()
 # print "Test loss: %.4f" % test()
