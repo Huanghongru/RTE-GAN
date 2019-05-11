@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import operator
 
 from Queue import PriorityQueue
-from torchtext.datasets import SNLI
+from torchtext.datasets import SNLI, MultiNLI
 from torchtext.data import Field, BucketIterator
 
 import matplotlib
@@ -36,12 +36,15 @@ TEXT = Field(tokenize = tokenize,
 LABEL = Field(tokenize = tokenize,
         lower=True)
 
-train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
+# train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
+train_data, valid_data, test_data = MultiNLI.splits(TEXT, LABEL)
 
-TEXT.build_vocab(train_data, min_freq=2)
+TEXT.build_vocab(train_data, min_freq=2,
+        specials=[u'<esos>', u'<nsos>', u'<csos>'],
+        vectors='glove.42B.300d')
 LABEL.build_vocab(train_data, min_freq=2)
 
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 
 #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device("cpu")
@@ -53,6 +56,16 @@ train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
         sort_key = lambda x : len(x.premise),
         device=device)
 print "Preparing data completed !"
+
+def init_process(src, label):
+    for i in range(src.shape[1]):
+        if LABEL.vocab.itos[label[0,i]]==u'entailment':
+            src[0,i] = TEXT.vocab.stoi[u'<esos>']
+        elif LABEL.vocab.itos[label[0,i]] == u'neutral':
+            src[0,i] = TEXT.vocab.stoi[u'<nsos>']
+        elif LABEL.vocab.itos[label[0,i]] == u'contradiction':
+            src[0,i] = TEXT.vocab.stoi[u'<csos>']
+    return src
 
 class BeamSearchNode(object):
     def __init__(self, hidden_state, pre_node, word_idx, log_prob, length):
@@ -353,13 +366,15 @@ model = Seq2Seq(enc, dec, device, PAD_IDX, SOS_IDX, EOS_IDX).to(device)
 
 def init_weights(m):
     for name, param in m.named_parameters():
-        if 'weight_ih' in name:
-            nn.init.normal_(param.data, mean=0, std=0.01)
-            # nn.init.xavier_uniform_(param.data)
-        elif 'weight_hh' in name:
+        if 'weight_hh' in name:
             nn.init.orthogonal_(param.data)
-        else:
+        elif 'weight' in name:
+            # nn.init.normal_(param.data, mean=0, std=0.01)
+            nn.init.xavier_uniform_(param.data)
+        elif 'bias' in name:
             nn.init.constant_(param.data, 0)
+        else:
+            pass
                             
 model.apply(init_weights)
 
@@ -378,6 +393,8 @@ def train(model, iterator, optimizer, criterion, clip):
     for i, batch in enumerate(iterator):
         src, src_len = batch.premise
         trg, trg_len = batch.hypothesis
+        src = init_process(src, batch.label)
+        trg = init_process(trg, batch.label)
 
         optimizer.zero_grad()
 
@@ -402,8 +419,8 @@ def train(model, iterator, optimizer, criterion, clip):
 
         epoch_loss += loss.item()
 
-        # if (i+1) % 100 == 0:
-        #     print "batch %d / %d - loss: %.8f" % (i+1, len(iterator), loss.item())
+        if (i+1) % 500 == 0:
+            print "batch %d / %d - loss: %.8f" % (i+1, len(iterator), loss.item())
 
     return epoch_loss / len(iterator)
 
@@ -414,6 +431,8 @@ def evaluate(model, iterator, criterion):
         for i, batch in enumerate(iterator):
             src, src_len = batch.premise
             trg, trg_len = batch.hypothesis
+            src = init_process(src, batch.label)
+            trg = init_process(trg, batch.label)
 
             output, attention = model(src, src_len, trg, 0)
 
@@ -425,7 +444,7 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator)
 
-N_EPOCHS = 16
+N_EPOCHS = 8
 CLIP = 1
 
 def trainIter():
@@ -457,6 +476,8 @@ def test():
         for i, batch in enumerate(test_iterator):
             src, src_len = batch.premise
             trg, trg_len = batch.hypothesis
+            src = init_process(src, batch.label)
+            trg = init_process(trg, batch.label)
 
             rand_col = random.choice(range(src.shape[1]))
             rand_input = src[:,rand_col]
@@ -565,7 +586,7 @@ def generate_bs_sentence(model, dataset, example_idx):
 # o, a = generate_sentence(model, "a little league team tries to catch a runner sliding into a base in an afternoon game .")
 # print o
 
-# trainIter()
+trainIter()
 # print "Test loss: %.4f" % test()
 
 # attn_test(train_data, 56, 'attn1.png')

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from torchtext.datasets import SNLI
+from torchtext.datasets import SNLI, MultiNLI
 from torchtext.data import Field, BucketIterator
 
 import nltk
@@ -25,11 +25,13 @@ TEXT = Field(tokenize = tokenize,
 LABEL = Field(tokenize = tokenize,
         lower=True)
 
-train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
-TEXT.build_vocab(train_data, min_freq=2)
+# train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
+train_data, valid_data, test_data = MultiNLI.splits(TEXT, LABEL)
+TEXT.build_vocab(train_data, min_freq=2, 
+        specials=[u'<esos>', u'<nsos>', u'<csos>'])
 LABEL.build_vocab(train_data, min_freq=2)
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 
 device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
@@ -144,12 +146,17 @@ model = seq2seq(enc, dec, device).to(device)
 
 def init_weights(m):
     for name, param in m.named_parameters():
-        nn.init.uniform_(param.data, -0.08, 0.08)
+        if 'weight_ih' in name:
+            nn.init.uniform_(param.data, -0.08, 0.08)
+        elif 'weight-hh' in name:
+            nn.init.orthogonal_(param.data)
+        else:
+            nn.init.constant_(param.data, 1.)
                             
 model.apply(init_weights)
 
 
-optimizer = optim.Adam(model.parameters())
+optimizer = optim.Adam(model.parameters(), lr=1e-2)
 
 PAD_IDX = TEXT.vocab.stoi[u'<pad>']
 
@@ -197,8 +204,8 @@ def train(model, iterator, optimizer, criterion, clip):
 
         epoch_loss += loss.item()
 
-        if (i+1) % 100 == 0:
-            print "batch %d / %d - loss: %.8f" % (i+1, len(iterator), loss.item())
+        # if (i+1) % 100 == 0:
+        #     print "batch %d / %d - loss: %.8f" % (i+1, len(iterator), loss.item())
 
     return epoch_loss / len(iterator)
 
@@ -220,7 +227,7 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator)
 
-N_EPOCHS = 32
+N_EPOCHS = 16
 CLIP = 1
 
 def trainIter():
@@ -286,13 +293,14 @@ def beam_test(output, beam_size=5):
         for idx in idx_cand[1:]:
             print "%s " % TEXT.vocab.itos[idx.item()], 
 
-# TODO: modify the source code to add special init tokens and retrain
+# The latest github version of torchtext has fixed this bug
 def signal_trigger_test(premise, label):
     model.load_state_dict(torch.load('model/snli-model.pt'))
     model.eval()
 
     print "Pre: %s" % premise
     prem = TEXT.numericalize([TEXT.preprocess(premise)], device=device)
+    print prem
     dummy_trg = torch.zeros(36, 1, device=device, dtype=torch.long)
     dummy_trg[0,0] = LABEL.vocab.stoi[label]
 
@@ -303,5 +311,5 @@ def visualSent(word_idxs):
     sent = [TEXT.vocab.itos[idx] for idx in word_idxs if idx not in [1,2,3,4,5,6]]
     return " ".join(sent)
 
-# trainIter()
+trainIter()
 # print "Test loss: %.4f" % test()
