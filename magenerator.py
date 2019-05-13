@@ -36,18 +36,18 @@ TEXT = Field(tokenize = tokenize,
 LABEL = Field(tokenize = tokenize,
         lower=True)
 
-# train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
-train_data, valid_data, test_data = MultiNLI.splits(TEXT, LABEL)
+train_data, valid_data, test_data = SNLI.splits(TEXT, LABEL)
+# train_data, valid_data, test_data = MultiNLI.splits(TEXT, LABEL)
 
 TEXT.build_vocab(train_data, min_freq=2,
         specials=[u'<esos>', u'<nsos>', u'<csos>'],
         vectors='glove.42B.300d')
 LABEL.build_vocab(train_data, min_freq=2)
 
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 
-#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu")
 
 train_iterator, valid_iterator, test_iterator = BucketIterator.splits(
         (train_data, valid_data, test_data),
@@ -347,10 +347,10 @@ class Seq2Seq(nn.Module):
 
 INPUT_DIM = len(TEXT.vocab)
 OUTPUT_DIM = len(TEXT.vocab)
-ENC_EMB_DIM = 256
-DEC_EMB_DIM = 256
-ENC_HID_DIM = 512
-DEC_HID_DIM = 512
+ENC_EMB_DIM = 300
+DEC_EMB_DIM = 300
+ENC_HID_DIM = 256
+DEC_HID_DIM = 256
 N_LAYERS = 2
 ENC_DROPOUT = 0.5
 DEC_DROPOUT = 0.5
@@ -444,7 +444,7 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator)
 
-N_EPOCHS = 8
+N_EPOCHS = 16
 CLIP = 1
 
 def trainIter():
@@ -586,8 +586,8 @@ def generate_bs_sentence(model, dataset, example_idx):
 # o, a = generate_sentence(model, "a little league team tries to catch a runner sliding into a base in an afternoon game .")
 # print o
 
-trainIter()
-# print "Test loss: %.4f" % test()
+# trainIter()
+print "Test loss: %.4f" % test()
 
 # attn_test(train_data, 56, 'attn1.png')
 # attn_test(train_data, 56)
