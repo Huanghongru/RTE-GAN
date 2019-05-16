@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 import nltk
+from nltk.translate.bleu_score import *
 
 import random
 
@@ -268,8 +269,8 @@ class Seq2Seq(nn.Module):
 
         return outputs, attentions
 
-    def beam_search_decode(self, src, src_len, beam_width=3):
-        trg = torch.zeros((100, src.shape[1])).long().fill_(self.sos_idx).to(self.device)
+    def beam_search_decode(self, src, src_len, sos_idx, beam_width=3):
+        trg = torch.zeros((100, src.shape[1])).long().fill_(sos_idx).to(self.device)
         
         batch_size = src.shape[1]
         max_len = trg.shape[0]
@@ -298,9 +299,9 @@ class Seq2Seq(nn.Module):
 
             # fetch the best node
             score, cur = nodes.get()
-            print TEXT.vocab.itos[cur.word_idx], score
             decoder_input = cur.word_idx
             decoder_hidden = cur.hidden
+            # print "word idx: %s\tscore: %.4f" % (cur.word_idx.item(), score)
 
             if cur.word_idx.item() == EOS_IDX and cur.pre_node != None:
                 endnodes.append((score, cur))
@@ -310,10 +311,10 @@ class Seq2Seq(nn.Module):
             decoder_output, decoder_hidden, attention = self.decoder(decoder_input, decoder_hidden, encoder_outputs, mask)
 
             log_prob, indexes = torch.topk(F.log_softmax(decoder_output, dim=1), beam_width)
-            print 'log_prob: %s indexes: %s' % (log_prob, indexes)
+            # print 'log_prob: %s\nindexes: %s' % (log_prob, indexes)
 
             for new_k in range(beam_width):
-                decoded_t = indexes[0][new_k].view(1,-1)
+                decoded_t = indexes[0][new_k].view(-1)
                 log_p = log_prob[0][new_k].item()
 
                 node = BeamSearchNode(decoder_hidden, cur, decoded_t, cur.logp+log_p, cur.len+1)
@@ -339,6 +340,7 @@ class Seq2Seq(nn.Module):
                 utterance.append(n.word_idx)
 
             utterance = utterance[::-1]
+            utterance = [t.item() for t in utterance]
             utterances.append(utterance)
 
         decoded_batch.append(utterances)
@@ -465,6 +467,7 @@ def trainIter():
         print '\tTrain Loss: %.3f' % train_loss
         print '\t Val. Loss: %.3f' % valid_loss
 
+result_model = 'model/result/signal_trigger_work_20190513.pt'
 def test():
     model.load_state_dict(torch.load('model/masnli-model.pt'))
     model.eval()
@@ -563,32 +566,70 @@ def attn_test(data, example_idx, fig_name):
 
     display_attention(premise, gen_hyp, attn, fig_name)
 
-def generate_bs_sentence(model, dataset, example_idx):
+def generate_bs_sentence(model, dataset, example_idx, label=None):
     model.load_state_dict(torch.load('model/masnli-model.pt'))
     model.eval()
 
     sentence = ' '.join(vars(dataset.examples[example_idx])['premise'])
-    print sentence
+    label = vars(dataset.examples[example_idx])['label'][0] if label is None else label
+    signals = {u'entailment': u'<esos>', u'contradiction': u'<csos>', u'neutral': u'<nsos>'}
+    if label not in [u'entailment', u'contradiction', u'neutral']:
+        print "Bad example..."
+        return [[[]]]
+
+    # print sentence
 
     tokenized = tokenize(sentence)
-    tokenized = [u'<sos>'] + [t.lower() for t in tokenized] + [u'<eos>']
+    tokenized = [signals[label]] + [t.lower() for t in tokenized] + [u'<eos>']
     numericalized = [TEXT.vocab.stoi[t] for t in tokenized]
 
     sentence_len = torch.LongTensor([len(numericalized)]).to(device)
     input_tensor = torch.LongTensor(numericalized).unsqueeze(1).to(device)
 
-    decoded_batch = model.beam_search_decode(input_tensor, sentence_len)
+    decoded_batch = model.beam_search_decode(input_tensor, 
+            sentence_len, TEXT.vocab.stoi[signals[label]])
 
-    print decoded_batch
     return decoded_batch
 
-# generate_bs_sentence(model, train_data, 32)
+def bleu(dataset):
+    gen_hyps = []
+    goldens = []
+    signals = {u'entailment': u'<esos>', u'contradiction': u'<csos>', 
+            u'neutral': u'<nsos>', u'-': ''}
+    for i in range(len(dataset.examples)):
+        cur_data = vars(dataset.examples[i])
+        label = signals[cur_data['label'][0]]
+        if not label: continue
+
+        gen_hyp = generate_bs_sentence(model, test_data, i)[0][0]
+        gen_hyp = visualSent(gen_hyp).split()
+
+        golden = [label] + vars(dataset.examples[i])['hypothesis']
+
+        gen_hyps.append(gen_hyp)
+        goldens.append([golden])
+
+        print "Premise: %s" % (' '.join(cur_data['premise']))
+        print "Gen hyp: %s" % (' '.join(gen_hyp))
+        print "Golden hyp: %s\n" % (' '.join(golden))
+
+    chencherry = SmoothingFunction()    # the smoothing method by chen et al.
+    bleu_score = corpus_bleu(goldens, gen_hyps, smoothing_function=chencherry.method2)
+    print "bleu: %.4f" % bleu_score
+    return bleu_score
+
+
+# sent = generate_bs_sentence(model, train_data, 32)[0][0]
+# print visualSent(sent)
+
 # o, a = generate_sentence(model, "a little league team tries to catch a runner sliding into a base in an afternoon game .")
 # print o
 
 # trainIter()
-print "Test loss: %.4f" % test()
+# print "Test loss: %.4f" % test()
 
 # attn_test(train_data, 56, 'attn1.png')
 # attn_test(train_data, 56)
+
+bleu(test_data)
 
